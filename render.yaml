@@ -7,7 +7,9 @@ services:
     runtime: node
     plan: free
     region: oregon
-    buildCommand: corepack enable && pnpm install --no-frozen-lockfile && pnpm --filter @geoverse/db generate && pnpm --filter @geoverse/db push:prod && pnpm --filter @geoverse/db seed:prod
+    # Install pnpm via npm instead of `corepack enable`: the corepack bundled with
+    # Node 20.18.0 has stale signing keys and fails pnpm signature verification.
+    buildCommand: npm install -g pnpm@9.12.0 && pnpm install --no-frozen-lockfile && pnpm --filter @geoverse/db generate && pnpm --filter @geoverse/db push:prod && pnpm --filter @geoverse/db seed:prod
     startCommand: pnpm --filter @geoverse/api start:prod
     healthCheckPath: /health
     envVars:
