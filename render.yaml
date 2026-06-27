@@ -7,7 +7,7 @@ services:
     runtime: node
     plan: free
     region: oregon
-    buildCommand: corepack enable && pnpm install --no-frozen-lockfile && pnpm --filter @geoverse/db generate && pnpm --filter @geoverse/db push:prod
+    buildCommand: corepack enable && pnpm install --no-frozen-lockfile && pnpm --filter @geoverse/db generate && pnpm --filter @geoverse/db push:prod && pnpm --filter @geoverse/db seed:prod
     startCommand: pnpm --filter @geoverse/api start:prod
     healthCheckPath: /health
     envVars:
