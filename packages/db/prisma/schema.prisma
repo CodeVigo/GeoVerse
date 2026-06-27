@@ -1,0 +1,300 @@
+// GeoVerse database schema.
+//
+// Design pillars:
+//   1. A UNIVERSAL "Entity" node (country, state, river, mountain, park, ...).
+//   2. A typed "EntityRelation" edge set = the KNOWLEDGE GRAPH.
+//   3. Educational CONTENT (facts/tricks/PYQs) attached to entities, tiered for Exam Mode.
+//   4. USER progress + spaced-repetition learning.
+//
+// PostGIS note: spatial geometry lives in the `boundaryGeoJson`/`centroid*` fields for now;
+// a later migration adds a real PostGIS `geometry` column + GiST index for spatial queries
+// (e.g. "countries crossed by the Equator"). The `postgis` extension is enabled below.
+
+generator client {
+  provider = "prisma-client-js"
+  // NOTE: PostGIS is enabled in production (Supabase). For local dev on a
+  // portable Postgres without PostGIS, the extension is omitted — no spatial
+  // features are used yet (geometry is stored as GeoJSON + lat/lng).
+  // To re-enable for production, add: previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // Production (Supabase) also enables: extensions = [postgis]
+}
+
+// ─────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────
+
+enum EntityType {
+  CONTINENT
+  COUNTRY
+  STATE
+  UNION_TERRITORY
+  DISTRICT
+  CITY
+  RIVER
+  MOUNTAIN
+  MOUNTAIN_RANGE
+  LAKE
+  OCEAN
+  SEA
+  ISLAND
+  DAM
+  NATIONAL_PARK
+  WILDLIFE_SANCTUARY
+  TIGER_RESERVE
+  BIOSPHERE_RESERVE
+  UNESCO_SITE
+  LANDMARK
+  MONUMENT
+  WATERFALL
+  PLATEAU
+  DESERT
+  ANIMAL
+  BIRD
+  PLANT
+  ORGANIZATION
+  HISTORICAL_EVENT
+}
+
+enum RelationType {
+  LOCATED_IN        // child is geographically inside parent
+  CAPITAL_OF
+  BORDERS
+  FLOWS_THROUGH     // river -> state/district
+  ORIGINATES_IN     // river -> source location
+  DRAINS_INTO       // river -> sea/ocean/river
+  TRIBUTARY_OF      // river -> river
+  BUILT_ON          // dam -> river
+  NATIONAL_ANIMAL_OF
+  NATIONAL_BIRD_OF
+  NATIONAL_FLOWER_OF
+  HAS_SITE          // region -> UNESCO/landmark
+  MEMBER_OF         // country -> organization
+  RELATED_TO        // generic discovery link
+}
+
+enum ContentTier {
+  MUST_KNOW
+  GOOD_TO_KNOW
+  EXPLORE_MORE
+}
+
+enum Mode {
+  EXPLORE
+  EXAM
+}
+
+// ─────────────────────────────────────────────────────────────
+// Geographic + graph core
+// ─────────────────────────────────────────────────────────────
+
+model Entity {
+  id        String     @id @default(cuid())
+  type      EntityType
+  name      String
+  slug      String     @unique
+  // Self-referencing hierarchy (Country -> State -> District ...)
+  parentId  String?
+  parent    Entity?    @relation("EntityHierarchy", fields: [parentId], references: [id])
+  children  Entity[]   @relation("EntityHierarchy")
+
+  // Lightweight spatial fields (full PostGIS geometry added in a later migration)
+  centroidLat    Float?
+  centroidLng    Float?
+  boundaryGeoJson Json?  // GeoJSON geometry for map rendering
+
+  // Flexible long-tail attributes
+  metadata  Json?
+
+  summary   String?     // short SEO-friendly description
+
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  // Relations
+  outgoing       EntityRelation[] @relation("RelationFrom")
+  incoming       EntityRelation[] @relation("RelationTo")
+  facts          Fact[]
+  memoryTricks   MemoryTrick[]
+  pyqs           Pyq[]
+  countryProfile CountryProfile?
+  stateProfile   StateProfile?
+  districtProfile DistrictProfile?
+  srsCards       SrsCard[]
+
+  @@index([type])
+  @@index([parentId])
+}
+
+model EntityRelation {
+  id        String       @id @default(cuid())
+  fromId    String
+  toId      String
+  type      RelationType
+  metadata  Json?
+  from      Entity       @relation("RelationFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  to        Entity       @relation("RelationTo", fields: [toId], references: [id], onDelete: Cascade)
+
+  @@unique([fromId, toId, type])
+  @@index([toId])
+  @@index([type])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Educational content (platform-managed, curated)
+// ─────────────────────────────────────────────────────────────
+
+model Fact {
+  id          String      @id @default(cuid())
+  entityId    String
+  entity      Entity      @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  tier        ContentTier @default(GOOD_TO_KNOW)
+  importance  Int         @default(3) // 1..5
+  difficulty  Int         @default(2) // 1..5
+  category    String?     // themed grouping e.g. "Culture", "Economy", "Wildlife"
+  title       String
+  body        String
+  examTags    String[]    // e.g. ["UPSC","SSC","KPSC"]
+  createdAt   DateTime    @default(now())
+
+  @@index([entityId, tier])
+}
+
+model MemoryTrick {
+  id        String   @id @default(cuid())
+  entityId  String
+  entity    Entity   @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  title     String
+  trick     String
+  kind      String?  // "mnemonic" | "story" | "visual" | "acronym"
+  createdAt DateTime @default(now())
+
+  @@index([entityId])
+}
+
+model Pyq {
+  id          String   @id @default(cuid())
+  entityId    String?
+  entity      Entity?  @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  exam        String   // "UPSC" | "SSC" | ...
+  year        Int?
+  question    String
+  options     Json     // string[]
+  answerIndex Int
+  explanation String?
+  difficulty  Int      @default(2)
+  createdAt   DateTime @default(now())
+
+  @@index([exam])
+  @@index([entityId])
+}
+
+// Structured profiles (typed columns for common fields + JSON for the long tail).
+
+model CountryProfile {
+  id              String  @id @default(cuid())
+  entityId        String  @unique
+  entity          Entity  @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  iso2            String?
+  iso3            String?
+  flagEmoji       String?
+  capital         String?
+  currency        String?
+  officialLanguages String[]
+  continent       String?
+  population      BigInt?
+  area            Float?
+  governmentType  String?
+  callingCode     String?
+  // long-tail: nationalAnimal, food, festivals, exports, organizations, etc.
+  data            Json?
+}
+
+model StateProfile {
+  id              String  @id @default(cuid())
+  entityId        String  @unique
+  entity          Entity  @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  capital         String?
+  formationDate   String?
+  area            Float?
+  population      BigInt?
+  density         Int?
+  literacy        Float?
+  sexRatio        Int?
+  officialLanguages String[]
+  districtCount   Int?
+  vehicleCode     String?
+  isoCode         String?
+  governor        String?
+  chiefMinister   String?
+  highCourt       String?
+  lokSabhaSeats   Int?
+  rajyaSabhaSeats Int?
+  assemblySeats   Int?
+  // long-tail: rivers, parks, minerals, festivals, cuisine, tourism, etc.
+  data            Json?
+}
+
+model DistrictProfile {
+  id          String  @id @default(cuid())
+  entityId    String  @unique
+  entity      Entity  @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  headquarter String?
+  area        Float?
+  population  BigInt?
+  data        Json?
+}
+
+// ─────────────────────────────────────────────────────────────
+// Users + learning system
+// ─────────────────────────────────────────────────────────────
+
+model User {
+  id            String        @id @default(cuid())
+  email         String        @unique
+  displayName   String?
+  passwordHash  String?
+  preferredMode Mode          @default(EXPLORE)
+  xp            Int           @default(0)
+  streakCount   Int           @default(0)
+  lastActiveAt  DateTime?
+  createdAt     DateTime      @default(now())
+
+  srsCards      SrsCard[]
+  quizAttempts  QuizAttempt[]
+}
+
+// Spaced-repetition card (SM-2 style) bound to an entity (and optionally a specific fact).
+model SrsCard {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entityId     String
+  entity       Entity   @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  easeFactor   Float    @default(2.5)
+  intervalDays Int      @default(0)
+  repetitions  Int      @default(0)
+  dueAt        DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@unique([userId, entityId])
+  @@index([userId, dueAt])
+}
+
+model QuizAttempt {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quizType    String   // "FLAG" | "CAPITAL" | "MAP_PUZZLE" | ...
+  mode        Mode     @default(EXPLORE)
+  score       Int
+  total       Int
+  details     Json?    // per-question record
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+}

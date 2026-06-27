@@ -1,0 +1,42 @@
+# Local development infrastructure for GeoVerse.
+# Run: docker compose up -d
+# This mirrors production (Supabase Postgres+PostGIS, Upstash Redis) so
+# migrating to managed hosting later requires no code changes.
+
+services:
+  postgres:
+    # PostGIS-enabled PostgreSQL 16 image
+    image: postgis/postgis:16-3.4
+    container_name: geoverse-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: geoverse
+      POSTGRES_PASSWORD: geoverse
+      POSTGRES_DB: geoverse
+    ports:
+      - "5432:5432"
+    volumes:
+      - geoverse-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U geoverse -d geoverse"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: geoverse-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - geoverse-redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  geoverse-pgdata:
+  geoverse-redisdata:

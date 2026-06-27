@@ -1,0 +1,24 @@
+# Render blueprint for the GeoVerse API (Fastify + Prisma).
+# Web (Next.js) is deployed separately on Vercel; the database on Supabase.
+# See DEPLOY.md for the full step-by-step guide.
+services:
+  - type: web
+    name: geoverse-api
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: corepack enable && pnpm install --no-frozen-lockfile && pnpm --filter @geoverse/db generate && pnpm --filter @geoverse/db push:prod
+    startCommand: pnpm --filter @geoverse/api start:prod
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      # Supabase Postgres connection string (Project Settings → Database → Connection string → URI).
+      - key: DATABASE_URL
+        sync: false
+      # Comma-separated list of allowed web origins, e.g. https://your-app.vercel.app
+      - key: WEB_ORIGIN
+        sync: false
+      # Auto-generated strong secret for signing auth tokens.
+      - key: JWT_SECRET
+        generateValue: true

@@ -1,0 +1,29 @@
+{
+  "name": "geoverse",
+  "version": "0.0.1",
+  "private": true,
+  "description": "GeoVerse — the world's best interactive geography learning platform.",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter ./apps/* dev",
+    "dev:web": "pnpm --filter @geoverse/web dev",
+    "dev:api": "pnpm --filter @geoverse/api dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "db:generate": "pnpm --filter @geoverse/db generate",
+    "db:push": "pnpm --filter @geoverse/db push",
+    "db:migrate": "pnpm --filter @geoverse/db migrate",
+    "db:seed": "pnpm --filter @geoverse/db seed",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "db:start": ".tools\\pg\\pgsql\\bin\\pg_ctl -D .tools\\pgdata -l .tools\\pg.log -o \"-p 5432\" start",
+    "db:stop": ".tools\\pg\\pgsql\\bin\\pg_ctl -D .tools\\pgdata stop",
+    "db:status": ".tools\\pg\\pgsql\\bin\\pg_ctl -D .tools\\pgdata status"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}

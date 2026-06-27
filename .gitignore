@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Prisma
+packages/db/prisma/*.db
+
+# Docker volumes (local data)
+.docker-data/
+
+# Generated Cesium runtime assets (copied from node_modules at build time)
+apps/web/public/cesium/
+
+# Local portable PostgreSQL (binaries + data) — dev only, not committed
+.tools/
