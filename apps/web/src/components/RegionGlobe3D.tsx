@@ -285,11 +285,13 @@ export function RegionGlobe3D({ entityType, name, iso3, neighbors, riversUrl }: 
           requestRenderMode: true,
           maximumRenderTimeChange: Infinity,
           creditContainer: document.createElement("div"),
+          // Render at the device's true pixel density (crisp on HiDPI/retina);
+          // we bound the cost below via resolutionScale so mobile stays smooth.
+          useBrowserRecommendedResolution: false,
           // Be tolerant of mobile GPUs: don't refuse to start just because the
-          // browser reports a "major performance caveat" (software rendering),
-          // and allow WebGL 1 fallback on older devices.
+          // browser reports a "major performance caveat" (software rendering).
+          // Cesium still auto-falls back to WebGL 1 when WebGL 2 is unavailable.
           contextOptions: {
-            requestWebgl1: true,
             webgl: { failIfMajorPerformanceCaveat: false },
           },
         });
@@ -301,8 +303,16 @@ export function RegionGlobe3D({ entityType, name, iso3, neighbors, riversUrl }: 
 
       const scene = viewer.scene;
       scene.globe.depthTestAgainstTerrain = true;
-      // 2.0 loads noticeably fewer tiles than 1.5 (faster, still crisp at region scale).
-      scene.globe.maximumScreenSpaceError = 2.0;
+      // Keep imagery crisp but bound GPU cost: render up to ~2× density on
+      // desktop and ~1.5× on phones (where devicePixelRatio is often 3×).
+      const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+      const isMobile =
+        typeof window !== "undefined" && Math.min(window.innerWidth, window.innerHeight) < 700;
+      const targetRatio = isMobile ? 1.5 : 2;
+      viewer.resolutionScale = Math.min(1, targetRatio / dpr);
+      // Lower = sharper tiles (more detail). These maps are static (render-on-
+      // demand), so the extra tiles load once; phones use a lighter value.
+      scene.globe.maximumScreenSpaceError = isMobile ? 2.0 : 1.4;
       if (scene.skyAtmosphere) scene.skyAtmosphere.show = false;
       scene.globe.showGroundAtmosphere = false;
       // The globe is clipped to this region + neighbours, so everything else

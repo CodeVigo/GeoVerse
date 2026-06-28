@@ -141,9 +141,9 @@ export function GlobeView() {
     typeof document !== "undefined" ? document.createElement("div") : undefined,
   );
   // Tolerant WebGL options so the globe still starts on mobile GPUs that report
-  // a performance caveat or only support WebGL 1. Stable ref to avoid rebuilds.
+  // a performance caveat. Cesium still auto-falls back to WebGL 1 when WebGL 2
+  // is unavailable, so we don't force it (forcing it disables MSAA on desktop).
   const [contextOptions] = useState(() => ({
-    requestWebgl1: true,
     webgl: { failIfMajorPerformanceCaveat: false },
   }));
   const [viewer, setViewer] = useState<CesiumViewer | null>(null);
