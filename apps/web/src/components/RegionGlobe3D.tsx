@@ -11,9 +11,7 @@ import {
   UrlTemplateImageryProvider,
   TileMapServiceImageryProvider,
   GeoJsonDataSource,
-  createWorldImageryAsync,
   createWorldTerrainAsync,
-  IonWorldImageryStyle,
   buildModuleUrl,
   Cartesian3,
   Cartesian2,
@@ -62,6 +60,10 @@ function supportsWebGL(): boolean {
   }
 }
 
+// Free, high-res satellite imagery that needs NO Cesium Ion token — this is the
+// default base so the maps are sharp in production even without an Ion key.
+const ESRI_SATELLITE =
+  "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 // ESRI tile services (best-effort: used for physical/topographic + reference labels).
 const ESRI_TOPO =
   "https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}";
@@ -176,7 +178,7 @@ export function RegionGlobe3D({ entityType, name, iso3, neighbors, riversUrl }: 
   const wrapRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Viewer | null>(null);
   const layersRef = useRef<{
-    bing?: ImageryLayer;
+    satellite?: ImageryLayer;
     topo?: ImageryLayer;
     physical?: ImageryLayer;
   }>({});
@@ -196,8 +198,8 @@ export function RegionGlobe3D({ entityType, name, iso3, neighbors, riversUrl }: 
 
   // ── Layer mode: flip imagery visibility ───────────────────────────────
   const applyLayer = useCallback((mode: LayerMode) => {
-    const { bing, topo, physical } = layersRef.current;
-    if (bing) bing.show = mode === "satellite";
+    const { satellite, topo, physical } = layersRef.current;
+    if (satellite) satellite.show = mode === "satellite";
     if (topo) topo.show = mode === "topographic";
     if (physical) physical.show = mode === "physical";
     viewerRef.current?.scene.requestRender();
@@ -347,6 +349,17 @@ export function RegionGlobe3D({ entityType, name, iso3, neighbors, riversUrl }: 
         ),
       );
 
+      // Satellite (default): free high-res ESRI World Imagery — needs NO Ion
+      // token, so the map is sharp in production regardless of any Ion key.
+      try {
+        const satellite = viewer.imageryLayers.addImageryProvider(
+          new UrlTemplateImageryProvider({ url: ESRI_SATELLITE, maximumLevel: 19 }),
+        );
+        layersRef.current.satellite = satellite;
+      } catch {
+        /* blocked — Natural Earth still shows */
+      }
+
       // Physical + topographic overlays (best-effort over corporate proxy).
       try {
         const physical = viewer.imageryLayers.addImageryProvider(
@@ -363,17 +376,10 @@ export function RegionGlobe3D({ entityType, name, iso3, neighbors, riversUrl }: 
         /* blocked — Natural Earth still shows */
       }
 
-      // Satellite: Bing aerial WITH labels via Ion (also labels seas/oceans).
-      if (hasIon) {
-        createWorldImageryAsync({ style: IonWorldImageryStyle.AERIAL_WITH_LABELS })
-          .then((bing) => {
-            if (!viewer || viewer.isDestroyed()) return;
-            const bingLayer = viewer.imageryLayers.addImageryProvider(bing);
-            layersRef.current.bing = bingLayer;
-            applyLayer(layer);
-          })
-          .catch(() => void 0);
+      applyLayer(layer);
 
+      // With a Cesium Ion token, upgrade to real 3D terrain (mountains/valleys).
+      if (hasIon) {
         createWorldTerrainAsync({ requestVertexNormals: true })
           .then((t) => {
             if (viewer && !viewer.isDestroyed()) viewer.terrainProvider = t;

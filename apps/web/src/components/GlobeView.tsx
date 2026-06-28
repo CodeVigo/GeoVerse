@@ -133,7 +133,9 @@ export function GlobeView() {
   const countriesRef = useRef<CountryFeature[] | null>(null);
   const ref = useRef<CesiumComponentRef<CesiumViewer>>(null);
   const [points, setPoints] = useState<GlobePoint[]>([]);
-  const [mode, setMode] = useState<LayerMode>("bing");
+  // Default to ESRI satellite — it's free (no Ion token) and high-res, so the
+  // globe is sharp in production. Bing (via Ion) stays available as a toggle.
+  const [mode, setMode] = useState<LayerMode>("esri");
   const [baseLayer] = useState(() => makeBaseLayer());
   // Stable across renders — recreating this inline makes Resium rebuild the
   // whole <Viewer> every render (an infinite recreate loop → lag/blur).
@@ -148,7 +150,7 @@ export function GlobeView() {
   }));
   const [viewer, setViewer] = useState<CesiumViewer | null>(null);
   const [selected, setSelected] = useState<GlobePoint | null>(null);
-  const modeRef = useRef<LayerMode>("bing");
+  const modeRef = useRef<LayerMode>("esri");
 
   // Show exactly one base layer for the selected mode; the ESRI label/boundary
   // reference layer stays on over both satellite styles (not over the street map).
