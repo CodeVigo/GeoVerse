@@ -2,6 +2,30 @@
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Free hosts (e.g. Render) spin the API down after inactivity; the first request
+// then hits a cold start (~50s) and returns a 502/503/504 or a network error.
+// Instead of failing instantly, retry with backoff so the data loads once the
+// server wakes. Total wait across retries ≈ 60s, enough for a cold start.
+async function fetchWaking(url: string, init?: RequestInit, tries = 6): Promise<Response> {
+  let lastErr: unknown;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const res = await fetch(url, init);
+      if (res.status >= 502 && res.status <= 504 && i < tries - 1) {
+        await sleep(3000 * (i + 1));
+        continue;
+      }
+      return res;
+    } catch (e) {
+      lastErr = e;
+      if (i < tries - 1) await sleep(3000 * (i + 1));
+    }
+  }
+  throw lastErr ?? new Error("Request failed after retries");
+}
+
 export interface GlobePoint {
   id: string;
   type: string;
@@ -63,7 +87,7 @@ export interface EntityDetail {
 }
 
 async function getJson<T>(path: string, revalidate = 60): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, { next: { revalidate } });
+  const res = await fetchWaking(`${API_URL}${path}`, { next: { revalidate } } as RequestInit);
   if (!res.ok) throw new Error(`API ${path} failed: ${res.status}`);
   return res.json() as Promise<T>;
 }
@@ -98,7 +122,7 @@ export async function getQuiz(opts: { type: string; scope?: string; count?: numb
   if (opts.scope) params.set("scope", opts.scope);
   if (opts.count) params.set("count", String(opts.count));
   // Credentials so the API can personalise (weak/due items first) when logged in.
-  const res = await fetch(`${API_URL}/api/quiz?${params.toString()}`, {
+  const res = await fetchWaking(`${API_URL}/api/quiz?${params.toString()}`, {
     credentials: "include",
     cache: "no-store",
   });

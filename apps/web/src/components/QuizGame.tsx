@@ -166,6 +166,9 @@ export function QuizGame({ title, type, scope, count = 10, accent = "#2dd4bf", f
     return (
       <Shell title={title}>
         <p className="text-slate-400">Loading questions…</p>
+        <p className="mt-2 text-xs text-slate-500">
+          First load can take up to a minute while the free server wakes up.
+        </p>
       </Shell>
     );
   }
