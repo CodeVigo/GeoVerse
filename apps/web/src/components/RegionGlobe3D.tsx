@@ -45,6 +45,23 @@ if (hasIon) {
   Ion.defaultAccessToken = process.env.NEXT_PUBLIC_CESIUM_ION_TOKEN as string;
 }
 
+// Can this device create a WebGL context at all? Cesium needs one; many older
+// or locked-down mobile browsers can't, so we detect up front and show a clean
+// fallback instead of Cesium's raw "hardware does not support" error widget.
+function supportsWebGL(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    const canvas = document.createElement("canvas");
+    const gl =
+      canvas.getContext("webgl") ||
+      canvas.getContext("experimental-webgl") ||
+      canvas.getContext("webgl2");
+    return Boolean(gl);
+  } catch {
+    return false;
+  }
+}
+
 // ESRI tile services (best-effort: used for physical/topographic + reference labels).
 const ESRI_TOPO =
   "https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}";
@@ -167,7 +184,7 @@ export function RegionGlobe3D({ entityType, name, iso3, neighbors, riversUrl }: 
   const riverEntitiesRef = useRef<Entity[]>([]);
   const riverInfoRef = useRef<Record<string, RiverInfo>>({});
 
-  const [status, setStatus] = useState<"loading" | "ready" | "empty">("loading");
+  const [status, setStatus] = useState<"loading" | "ready" | "empty" | "unsupported">("loading");
   const [layer, setLayer] = useState<LayerMode>("satellite");
   const [showDistricts, setShowDistricts] = useState(true);
   // Rivers are OFF by default — only animate when the user presses "Rivers".
@@ -227,6 +244,11 @@ export function RegionGlobe3D({ entityType, name, iso3, neighbors, riversUrl }: 
   // ── Build the scene ──────────────────────────────────────────────────
   useEffect(() => {
     if (!ref.current) return;
+    // Bail out cleanly on devices with no WebGL (common on locked-down phones).
+    if (!supportsWebGL()) {
+      setStatus("unsupported");
+      return;
+    }
     let viewer: Viewer | null = null;
     let cancelled = false;
     let handler: ScreenSpaceEventHandler | null = null;
@@ -245,24 +267,36 @@ export function RegionGlobe3D({ entityType, name, iso3, neighbors, riversUrl }: 
       }));
       const contextFeatures = context.groups.flatMap((g) => g.features);
 
-      viewer = new Viewer(ref.current, {
-        baseLayer: false as never,
-        baseLayerPicker: false,
-        geocoder: false,
-        homeButton: false,
-        sceneModePicker: false,
-        navigationHelpButton: false,
-        animation: false,
-        timeline: false,
-        fullscreenButton: false,
-        infoBox: false,
-        selectionIndicator: false,
-        // These maps are static (no spin/animation), so render only when
-        // something actually changes — huge CPU/GPU saving = far less lag.
-        requestRenderMode: true,
-        maximumRenderTimeChange: Infinity,
-        creditContainer: document.createElement("div"),
-      });
+      try {
+        viewer = new Viewer(ref.current, {
+          baseLayer: false as never,
+          baseLayerPicker: false,
+          geocoder: false,
+          homeButton: false,
+          sceneModePicker: false,
+          navigationHelpButton: false,
+          animation: false,
+          timeline: false,
+          fullscreenButton: false,
+          infoBox: false,
+          selectionIndicator: false,
+          // These maps are static (no spin/animation), so render only when
+          // something actually changes — huge CPU/GPU saving = far less lag.
+          requestRenderMode: true,
+          maximumRenderTimeChange: Infinity,
+          creditContainer: document.createElement("div"),
+          // Be tolerant of mobile GPUs: don't refuse to start just because the
+          // browser reports a "major performance caveat" (software rendering),
+          // and allow WebGL 1 fallback on older devices.
+          contextOptions: {
+            requestWebgl1: true,
+            webgl: { failIfMajorPerformanceCaveat: false },
+          },
+        });
+      } catch {
+        if (!cancelled) setStatus("unsupported");
+        return;
+      }
       viewerRef.current = viewer;
 
       const scene = viewer.scene;
@@ -678,6 +712,25 @@ export function RegionGlobe3D({ entityType, name, iso3, neighbors, riversUrl }: 
   }, [entityType, name, iso3, (neighbors ?? []).join("|"), riversUrl]);
 
   if (status === "empty") return null;
+
+  if (status === "unsupported")
+    return (
+      <div className="flex w-full flex-col items-center justify-center gap-3 rounded-2xl border border-white/10 bg-ink-950 px-6 py-12 text-center">
+        <span className="text-3xl">🗺️</span>
+        <p className="text-base font-semibold text-white">3D map unavailable on this device</p>
+        <p className="max-w-md text-sm text-slate-400">
+          The interactive 3D globe needs WebGL hardware acceleration, which this browser couldn’t
+          start. Try opening GeoVerse on a desktop, or enable “hardware acceleration” in your mobile
+          browser settings. Meanwhile, the flat 2D map puzzles work everywhere.
+        </p>
+        <Link
+          href="/games"
+          className="mt-1 rounded-full bg-brand-500 px-5 py-2 text-sm font-semibold text-ink-950 transition hover:bg-brand-400"
+        >
+          Explore 2D map puzzles →
+        </Link>
+      </div>
+    );
 
   const LAYERS: { id: LayerMode; label: string }[] = [
     { id: "satellite", label: "Satellite" },

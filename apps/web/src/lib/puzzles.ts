@@ -54,7 +54,12 @@ function districtPuzzle(slug: string, state: string, emoji: string): PuzzleDef {
   };
 }
 
-function continentPuzzle(slug: string, continent: string, emoji: string): PuzzleDef {
+function continentPuzzle(
+  slug: string,
+  continent: string,
+  emoji: string,
+  exclude?: string[],
+): PuzzleDef {
   return {
     slug,
     group: "World",
@@ -66,6 +71,7 @@ function continentPuzzle(slug: string, continent: string, emoji: string): Puzzle
     nameKeys: COUNTRY_NAME_KEYS,
     filterKey: "CONTINENT",
     filterValue: continent,
+    exclude,
   };
 }
 
@@ -99,7 +105,9 @@ export const PUZZLES: PuzzleDef[] = [
   districtPuzzle("maharashtra-districts", "Maharashtra", "🏙️"),
   districtPuzzle("kerala-districts", "Kerala", "🌴"),
   districtPuzzle("uttar-pradesh-districts", "Uttar Pradesh", "🕌"),
-  continentPuzzle("europe-countries", "Europe", "🏰"),
+  // Russia is transcontinental and spans 180°, which would squash the rest of
+  // Europe into a thin strip — keep the Europe map focused on the rest.
+  continentPuzzle("europe-countries", "Europe", "🏰", ["Russia", "Russian Federation"]),
   continentPuzzle("asia-countries", "Asia", "🏯"),
   continentPuzzle("africa-countries", "Africa", "🦁"),
   continentPuzzle("south-america-countries", "South America", "🦜"),

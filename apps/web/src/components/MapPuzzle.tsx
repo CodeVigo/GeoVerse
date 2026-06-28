@@ -151,7 +151,33 @@ export function MapPuzzle({
   const recordedRef = useRef(false);
   const mapRef = useRef<HTMLDivElement | null>(null);
 
-  const singular = noun.replace(/s$/, "");
+  // The prompt box can be dragged anywhere over the map. `null` = default corner.
+  const [boxPos, setBoxPos] = useState<{ x: number; y: number } | null>(null);
+  const dragRef = useRef<{ ox: number; oy: number; w: number; h: number } | null>(null);
+
+  const onBoxDragStart = (e: React.PointerEvent<HTMLDivElement>) => {
+    const box = e.currentTarget.parentElement;
+    const container = mapRef.current;
+    if (!box || !container) return;
+    const b = box.getBoundingClientRect();
+    dragRef.current = { ox: e.clientX - b.left, oy: e.clientY - b.top, w: b.width, h: b.height };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onBoxDragMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    const container = mapRef.current;
+    if (!d || !container) return;
+    const c = container.getBoundingClientRect();
+    const x = Math.max(0, Math.min(e.clientX - c.left - d.ox, c.width - d.w));
+    const y = Math.max(0, Math.min(e.clientY - c.top - d.oy, c.height - d.h));
+    setBoxPos({ x, y });
+  };
+  const onBoxDragEnd = () => {
+    dragRef.current = null;
+  };
+
+  // "countries" → "country", "districts" → "district", "states" → "state".
+  const singular = /ies$/.test(noun) ? noun.replace(/ies$/, "y") : noun.replace(/s$/, "");
 
   useEffect(() => {
     const onChange = () => setIsFs(Boolean(document.fullscreenElement));
@@ -195,16 +221,33 @@ export function MapPuzzle({
             picked.push({ name, geom: f.geometry });
           }
 
-          // Pass 1: detect a region that wraps across the antimeridian (e.g. Oceania).
-          let rawMin = Infinity;
-          let rawMax = -Infinity;
-          for (const p of picked)
-            eachCoord(p.geom, (lng) => {
-              if (lng < rawMin) rawMin = lng;
-              if (lng > rawMax) rawMax = lng;
-            });
-          const wrap = rawMax - rawMin > 180;
-          const tx: Tx = (lng) => (wrap && lng < 0 ? lng + 360 : lng);
+          // Pass 1: handle regions that wrap across the antimeridian (Oceania,
+          // North America's Aleutians, etc.). A naive "shift every negative
+          // longitude" breaks regions like Europe that straddle BOTH the prime
+          // meridian (Portugal at -9°) and the antimeridian, so instead we find
+          // the widest empty longitude gap and rotate the map to cut there.
+          const lngs: number[] = [];
+          for (const p of picked) eachCoord(p.geom, (lng) => lngs.push(lng));
+          let tx: Tx = (lng) => lng;
+          if (lngs.length > 1) {
+            const sorted = [...lngs].sort((a, b) => a - b);
+            const lo = sorted[0];
+            const hi = sorted[sorted.length - 1];
+            // Start with the natural wrap gap (across ±180); beat it with any
+            // wider interior gap, which would mean the region truly wraps.
+            let gapEdge = hi;
+            let gapSize = lo + 360 - hi;
+            for (let i = 1; i < sorted.length; i++) {
+              const g = sorted[i] - sorted[i - 1];
+              if (g > gapSize) {
+                gapSize = g;
+                gapEdge = sorted[i - 1];
+              }
+            }
+            if (hi - lo > 180 && gapEdge < hi) {
+              tx = (lng) => (lng <= gapEdge ? lng + 360 : lng);
+            }
+          }
 
           // Pass 2: build paths/bbox/centroids using the (possibly shifted) longitudes.
           let minLng = Infinity;
@@ -457,10 +500,21 @@ export function MapPuzzle({
           }`}
         >
           {!done && target && (
-            <div className="absolute left-3 top-3 z-10 max-w-[16rem] rounded-lg border border-white/10 bg-ink-950/90 px-3 py-2 text-left shadow-lg backdrop-blur">
-              <p className="text-[10px] uppercase tracking-wider text-slate-400">
-                Find this {singular}
-              </p>
+            <div
+              className={`absolute z-10 max-w-[16rem] rounded-lg border border-white/10 bg-ink-950/90 px-3 py-2 text-left shadow-lg backdrop-blur ${
+                boxPos ? "" : "left-3 top-3"
+              }`}
+              style={boxPos ? { left: boxPos.x, top: boxPos.y } : undefined}
+            >
+              <div
+                onPointerDown={onBoxDragStart}
+                onPointerMove={onBoxDragMove}
+                onPointerUp={onBoxDragEnd}
+                className="-mx-1 -mt-1 mb-0.5 flex cursor-move touch-none items-center gap-1 px-1 pt-1 text-[10px] uppercase tracking-wider text-slate-400 select-none"
+                title="Drag to move"
+              >
+                <span className="text-slate-500">⠿</span> Find this {singular}
+              </div>
               <p className="text-base font-bold text-brand-300">{target}</p>
 
               {shownHints.map((h, i) => (

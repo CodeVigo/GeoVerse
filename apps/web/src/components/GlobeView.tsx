@@ -140,6 +140,12 @@ export function GlobeView() {
   const [creditContainer] = useState(() =>
     typeof document !== "undefined" ? document.createElement("div") : undefined,
   );
+  // Tolerant WebGL options so the globe still starts on mobile GPUs that report
+  // a performance caveat or only support WebGL 1. Stable ref to avoid rebuilds.
+  const [contextOptions] = useState(() => ({
+    requestWebgl1: true,
+    webgl: { failIfMajorPerformanceCaveat: false },
+  }));
   const [viewer, setViewer] = useState<CesiumViewer | null>(null);
   const [selected, setSelected] = useState<GlobePoint | null>(null);
   const modeRef = useRef<LayerMode>("bing");
@@ -421,6 +427,7 @@ export function GlobeView() {
         infoBox={false}
         selectionIndicator={false}
         creditContainer={creditContainer}
+        contextOptions={contextOptions}
       >
         <ViewerReady onReady={setViewer} />
         {points.map((p) => (
