@@ -10,9 +10,32 @@ import { authRoutes } from "./routes/auth.js";
 
 const app = Fastify({ logger: true });
 
+// Any explicitly-allowed origins (comma-separated) from the environment.
+const allowList = (process.env.WEB_ORIGIN ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+// Decide if a browser Origin may call the API. We always allow localhost (dev)
+// and any *.vercel.app deployment (prod + previews), plus anything explicitly
+// listed in WEB_ORIGIN. This avoids silent CORS failures when WEB_ORIGIN is
+// unset or misconfigured on the host.
+function isAllowedOrigin(origin: string): boolean {
+  if (allowList.includes(origin)) return true;
+  try {
+    const { hostname } = new URL(origin);
+    if (hostname === "localhost" || hostname === "127.0.0.1") return true;
+    if (hostname.endsWith(".vercel.app")) return true;
+  } catch {
+    /* malformed origin header — reject below */
+  }
+  return false;
+}
+
 await app.register(cors, {
-  // Credentials must be allowed so the auth cookie is sent cross-port (3000 → 4000).
-  origin: process.env.WEB_ORIGIN?.split(",") ?? true,
+  // No Origin header = same-origin/curl/server-to-server → allow.
+  // Credentials must be allowed so the auth cookie is sent cross-site.
+  origin: (origin, cb) => cb(null, !origin || isAllowedOrigin(origin)),
   credentials: true,
 });
 
