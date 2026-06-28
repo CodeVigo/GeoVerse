@@ -327,6 +327,10 @@ export function RegionGlobe3D({ entityType, name, iso3, neighbors, riversUrl }: 
       } catch {
         /* older Cesium */
       }
+      // With requestRenderMode on, the scene only redraws on demand. Without this,
+      // the sharp satellite tiles that arrive AFTER the camera settles never get
+      // painted, so the map stays stuck on the initial low-res relief frame.
+      scene.globe.tileLoadProgressEvent.addEventListener(() => scene.requestRender());
 
       // Clip the globe to this region + neighbours.
       try {
@@ -409,7 +413,9 @@ export function RegionGlobe3D({ entityType, name, iso3, neighbors, riversUrl }: 
       // region's size so it works for India, a state, or a single district.
       const fb = boundsOf(features);
       const spanM = Math.max(Math.max(fb[2] - fb[0], fb[3] - fb[1]) * 111000, 60000);
-      const labelFade = new NearFarScalar(spanM * 0.12, 1.0, spanM * 0.55, 0.0);
+      // Keep names readable from the default overview (they used to fade out before
+      // the camera settled, making the map look label-less); only dim far away.
+      const labelFade = new NearFarScalar(spanM * 0.1, 1.0, spanM * 3.0, 0.35);
 
       for (const lbl of context.labels) {
         viewer.entities.add({
@@ -486,6 +492,28 @@ export function RegionGlobe3D({ entityType, name, iso3, neighbors, riversUrl }: 
           });
           if (cancelled || !viewer || viewer.isDestroyed()) return;
           viewer.dataSources.add(ds);
+
+          // GeoJsonDataSource polygon outlines render as 1px hairlines on most
+          // GPUs (a Cesium limitation), so the state borders were invisible.
+          // Draw them as real THICK ground polylines with a dark casing so the
+          // states are clearly separated over any imagery.
+          const stateBorder = Color.fromCssColorString("#5eead4");
+          for (const f of indiaData.features) {
+            for (const flat of polygonRings(f)) {
+              const positions = Cartesian3.fromDegreesArray(flat);
+              viewer.entities.add({
+                polyline: {
+                  positions,
+                  width: 6,
+                  material: Color.BLACK.withAlpha(0.55),
+                  clampToGround: true,
+                },
+              });
+              viewer.entities.add({
+                polyline: { positions, width: 2.5, material: stateBorder, clampToGround: true },
+              });
+            }
+          }
 
           // State names, revealed as the user zooms in (deduped, like districts).
           const seenStates = new Set<string>();
