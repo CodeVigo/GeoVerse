@@ -271,7 +271,8 @@ export function QuizGame({ title, type, scope, count = 10, accent = "#2dd4bf", f
         <div className="mb-6 flex justify-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={`https://flagcdn.com/w320/${q.flag}.png`}
+            src={`https://flagcdn.com/w640/${q.flag}.png`}
+            srcSet={`https://flagcdn.com/w640/${q.flag}.png 1x, https://flagcdn.com/w1280/${q.flag}.png 2x`}
             alt="Flag to identify"
             className="h-32 w-auto rounded-lg border border-white/15 shadow-lg"
           />
