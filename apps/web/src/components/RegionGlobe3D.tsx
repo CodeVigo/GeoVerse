@@ -11,7 +11,9 @@ import {
   UrlTemplateImageryProvider,
   TileMapServiceImageryProvider,
   GeoJsonDataSource,
+  createWorldImageryAsync,
   createWorldTerrainAsync,
+  IonWorldImageryStyle,
   buildModuleUrl,
   Cartesian3,
   Cartesian2,
@@ -382,8 +384,19 @@ export function RegionGlobe3D({ entityType, name, iso3, neighbors, riversUrl }: 
 
       applyLayer(layer);
 
-      // With a Cesium Ion token, upgrade to real 3D terrain (mountains/valleys).
+      // With a Cesium Ion token, upgrade the satellite layer to high-res Bing
+      // aerial (sharp deep-zoom detail) layered above ESRI, plus real 3D terrain.
       if (hasIon) {
+        createWorldImageryAsync({ style: IonWorldImageryStyle.AERIAL_WITH_LABELS })
+          .then((bing) => {
+            if (!viewer || viewer.isDestroyed()) return;
+            const bingLayer = viewer.imageryLayers.addImageryProvider(bing);
+            layersRef.current.satellite = bingLayer; // ESRI stays underneath as fallback
+            applyLayer(layer);
+            viewer.scene.requestRender();
+          })
+          .catch(() => void 0);
+
         createWorldTerrainAsync({ requestVertexNormals: true })
           .then((t) => {
             if (viewer && !viewer.isDestroyed()) viewer.terrainProvider = t;
